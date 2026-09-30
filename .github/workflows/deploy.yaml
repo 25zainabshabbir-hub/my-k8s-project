@@ -1,0 +1,50 @@
+name: build-and-deploy
+on:
+  push:
+    branches: [main]
+
+env:
+  ACR: k8slabzainab.azurecr.io
+  IMAGE: two-tier-api
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push image
+        run: |
+          docker build -t $ACR/$IMAGE:${{ github.sha }} .
+          docker push $ACR/$IMAGE:${{ github.sha }}
+
+      - name: Set up kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Create secret
+        run: |
+          kubectl create secret generic db-secret \
+            --from-literal=POSTGRES_USER='${{ secrets.POSTGRES_USER }}' \
+            --from-literal=POSTGRES_PASSWORD='${{ secrets.POSTGRES_PASSWORD }}' \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy manifests
+        run: |
+          sed -i "s|IMAGE_PLACEHOLDER|$ACR/$IMAGE:${{ github.sha }}|" k8s/api-deployment.yaml
+          kubectl apply -f k8s/
+
+      - name: Verify rollout
+        run: |
+          kubectl rollout status deployment/postgres --timeout=180s
+          kubectl rollout status deployment/api --timeout=180s
+          kubectl get ingress
