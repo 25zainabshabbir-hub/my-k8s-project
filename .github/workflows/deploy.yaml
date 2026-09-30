@@ -40,8 +40,8 @@ jobs:
 
       - name: Deploy manifests
         run: |
-          sed -i "s|IMAGE_PLACEHOLDER|$ACR/$IMAGE:${{ github.sha }}|" k8s/api-deployment.yaml
-          kubectl apply -f k8s/
+          sed -i "s|IMAGE_PLACEHOLDER|$ACR/$IMAGE:${{ github.sha }}|" api-deployment.yaml
+          kubectl apply -f configmap.yaml -f db-pvc.yaml -f db-deployment.yaml -f db-service.yaml -f api-deployment.yaml -f api-service.yaml -f ingress.yaml
 
       - name: Verify rollout
         run: |
